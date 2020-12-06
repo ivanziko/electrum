@@ -34,6 +34,7 @@ from electrum.i18n import _
 from electrum.util import format_time
 from electrum.invoices import PR_TYPE_ONCHAIN, PR_TYPE_LN, LNInvoice, OnchainInvoice
 from electrum.plugin import run_hook
+from electrum.invoices import Invoice
 
 from .util import MyTreeView, pr_icons, read_QIcon, webopen, MySortModel
 
@@ -108,20 +109,19 @@ class RequestList(MyTreeView):
         super().clearSelection()
         self.selectionModel().clearCurrentIndex()
 
-    def refresh_status(self):
-        m = self.std_model
-        for r in range(m.rowCount()):
-            idx = m.index(r, self.Columns.STATUS)
-            date_idx = idx.sibling(idx.row(), self.Columns.DATE)
-            date_item = m.itemFromIndex(date_idx)
-            status_item = m.itemFromIndex(idx)
-            key = date_item.data(ROLE_KEY)
-            req = self.wallet.get_request(key)
-            if req:
-                status = self.parent.wallet.get_request_status(key)
-                status_str = req.get_status_str(status)
-                status_item.setText(status_str)
-                status_item.setIcon(read_QIcon(pr_icons.get(status)))
+    def update_item(self, key, invoice: Invoice):
+        model = self.std_model
+        for row in range(0, model.rowCount()):
+            item = model.item(row, 0)
+            if item.data(ROLE_KEY) == key:
+                break
+        else:
+            return
+        status_item = model.item(row, self.Columns.STATUS)
+        status = self.parent.wallet.get_request_status(key)
+        status_str = invoice.get_status_str(status)
+        status_item.setText(status_str)
+        status_item.setIcon(read_QIcon(pr_icons.get(status)))
 
     def update(self):
         # not calling maybe_defer_update() as it interferes with conditional-visibility
@@ -129,7 +129,7 @@ class RequestList(MyTreeView):
         self.proxy.setDynamicSortFilter(False)  # temp. disable re-sorting after every change
         self.std_model.clear()
         self.update_headers(self.__class__.headers)
-        for req in self.wallet.get_sorted_requests():
+        for req in self.wallet.get_unpaid_requests():
             if req.is_lightning():
                 assert isinstance(req, LNInvoice)
                 key = req.rhash
